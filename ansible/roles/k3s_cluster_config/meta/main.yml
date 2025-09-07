@@ -1,0 +1,5 @@
+---
+# K3S Cluster Configuration Role
+
+dependencies:
+  - role: service_management

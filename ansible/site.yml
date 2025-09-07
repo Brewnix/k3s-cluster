@@ -1,0 +1,128 @@
+---
+# Proxmox K3S Cluster Deployment Playbook
+# Multi-node Kubernetes cluster deployment
+
+- name: Deploy Proxmox K3S Cluster
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - "{{ site_config_file | default('config/sites/k3s-site.yml') }}"
+
+  vars:
+    # K3S-specific configuration
+    ansible_roles_path:
+      - "{{ playbook_dir }}/roles"
+      - "{{ playbook_dir }}/../../common/ansible/roles"
+    
+    # Service definitions for K3S cluster
+    enabled_services: "{{ lookup('file', 'services/k3s-services.yml') | from_yaml | default({}) }}"
+    
+    # K3S cluster defaults
+    k3s_cluster_config:
+      cluster_cidr: "10.244.0.0/16"
+      service_cidr: "10.96.0.0/12"
+      cluster_dns: "10.96.0.10"
+      network_plugin: "flannel"
+    
+    # Multi-node configuration
+    cluster_nodes:
+      master_count: "{{ k3s_master.count | default(1) }}"
+      worker_count: "{{ k3s_worker.count | default(3) }}"
+
+  pre_tasks:
+    - name: Validate K3S cluster configuration
+      ansible.builtin.assert:
+        that:
+          - site_name is defined
+          - network is defined
+          - proxmox_api_password is defined
+          - k3s_cluster_config is defined
+        fail_msg: "K3S cluster configuration is incomplete"
+
+    - name: Check if running on Proxmox VE
+      ansible.builtin.stat:
+        path: /etc/pve
+      register: pve_check
+      
+    - name: Verify Proxmox VE installation
+      ansible.builtin.fail:
+        msg: "This playbook must be run on a Proxmox VE host"
+      when: not pve_check.stat.exists
+
+    - name: Display K3S deployment information
+      ansible.builtin.debug:
+        msg: |
+          Deploying Proxmox K3S Cluster: {{ site_name }}
+          Network: {{ network.vlan_id | default('N/A') }} - {{ network.ip_range }}
+          Master Nodes: {{ cluster_nodes.master_count }}
+          Worker Nodes: {{ cluster_nodes.worker_count }}
+          Cluster CIDR: {{ k3s_cluster_config.cluster_cidr }}
+          Service CIDR: {{ k3s_cluster_config.service_cidr }}
+          Enabled Services: {{ enabled_services.keys() | list | join(', ') if enabled_services else 'None configured' }}
+
+  roles:
+    - role: proxmox_host_setup
+      tags:
+        - host_setup
+        - repositories
+        - networking
+        
+    - role: k3s_cluster_config
+      tags:
+        - k3s_config
+        - cluster_setup
+        
+    - role: service_management
+      tags:
+        - services
+        - k3s_services
+      vars:
+        service_type: "k3s"
+
+  post_tasks:
+    - name: K3S cluster deployment summary
+      ansible.builtin.debug:
+        msg: |
+          Proxmox K3S Cluster deployment complete!
+          Host: {{ ansible_fqdn }}
+          Management IP: {{ network.management_ip | default(ansible_default_ipv4.address) }}
+          {% if enabled_services.k3s_master is defined and enabled_services.k3s_master.enabled %}
+          K3S Master Nodes: {{ cluster_nodes.master_count }}
+          {% endif %}
+          {% if enabled_services.k3s_worker is defined and enabled_services.k3s_worker.enabled %}
+          K3S Worker Nodes: {{ cluster_nodes.worker_count }}
+          {% endif %}
+          {% if enabled_services.rancher_management is defined and enabled_services.rancher_management.enabled %}
+          Rancher Management: https://{{ enabled_services.rancher_management.network.ip | default('VM-IP') }}
+          {% endif %}
+          {% if enabled_services.harbor_registry is defined and enabled_services.harbor_registry.enabled %}
+          Harbor Registry: https://{{ enabled_services.harbor_registry.network.ip | default('VM-IP') }}
+          {% endif %}
+          Proxmox Web UI: https://{{ ansible_default_ipv4.address }}:8006
+          Cluster Network: {{ k3s_cluster_config.cluster_cidr }}
+          
+          Next steps:
+          1. Configure kubectl access to the cluster
+          2. Deploy ingress controller and load balancer
+          3. Configure persistent storage with Longhorn
+          4. Set up monitoring and logging stack
+
+    - name: Save K3S deployment state
+      ansible.builtin.copy:
+        content: |
+          # Proxmox K3S Cluster Deployment Status
+          Deployment completed at: {{ ansible_date_time.iso8601 }}
+          Site: {{ site_name }}
+          Host: {{ ansible_fqdn }}
+          Type: Kubernetes Cluster (K3S)
+          Master Nodes: {{ cluster_nodes.master_count }}
+          Worker Nodes: {{ cluster_nodes.worker_count }}
+          Cluster CIDR: {{ k3s_cluster_config.cluster_cidr }}
+          Service CIDR: {{ k3s_cluster_config.service_cidr }}
+          Services Deployed: {{ enabled_services.keys() | list | join(', ') if enabled_services else 'None' }}
+          Status: SUCCESS
+        dest: /var/log/proxmox-k3s-deployment.log
+        mode: '0644'

@@ -1,0 +1,40 @@
+---
+# K3S Network Configuration Template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3s-network-config
+  namespace: kube-system
+data:
+  network-config.yaml: |
+    # Cluster networking configuration
+    clusterCIDR: {{ k3s_cluster_config.cluster_cidr }}
+    serviceCIDR: {{ k3s_cluster_config.service_cidr }}
+    clusterDNS: {{ k3s_cluster_config.cluster_dns }}
+    
+    # Flannel configuration
+    flannelBackend: {{ k3s_cluster_config.network_plugin }}
+    
+    {% if network is defined and network.vlan_id is defined %}
+    # VLAN configuration for Proxmox networking
+    vlanConfig:
+      vlanId: {{ network.vlan_id }}
+      networkRange: {{ network.ip_range }}
+      managementIP: {{ network.management_ip | default(ansible_default_ipv4.address) }}
+    {% endif %}
+    
+    # Network policies
+    networkPolicies:
+      enabled: true
+      defaultDeny: false
+      
+    # Load balancer configuration
+    loadBalancer:
+      type: metallb
+      addressPool: {{ network.load_balancer_range | default('192.168.1.200-192.168.1.210') }}
+      
+    # Ingress configuration
+    ingress:
+      enabled: true
+      class: nginx
+      defaultBackend: true

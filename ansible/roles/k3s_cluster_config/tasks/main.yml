@@ -1,0 +1,82 @@
+---
+# K3S Cluster Configuration Tasks
+
+- name: Install required packages for K3S
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: true
+
+- name: Create K3S configuration directory
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Configure K3S cluster settings
+  ansible.builtin.template:
+    src: k3s-config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  notify: restart k3s
+
+- name: Set up K3S cluster token
+  ansible.builtin.copy:
+    content: "{{ k3s_token | default(ansible_machine_id) }}"
+    dest: /var/lib/rancher/k3s/server/node-token
+    mode: '0600'
+    owner: root
+    group: root
+  when: inventory_hostname in groups['k3s_masters'] | default([])
+
+- name: Configure K3S networking
+  ansible.builtin.template:
+    src: k3s-network.yaml.j2
+    dest: /etc/rancher/k3s/network-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Set up K3S persistent storage configuration
+  ansible.builtin.template:
+    src: k3s-storage.yaml.j2
+    dest: /etc/rancher/k3s/storage-config.yaml
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Configure Proxmox VM templates for K3S nodes
+  ansible.builtin.template:
+    src: vm-template.json.j2
+    dest: /tmp/k3s-vm-template.json
+    mode: '0644'
+  when: k3s_auto_provision | default(true)
+
+- name: Set up kubectl configuration
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: '0755'
+  when: inventory_hostname in groups['k3s_masters'] | default([])
+
+- name: Display K3S cluster configuration
+  ansible.builtin.debug:
+    msg: |
+      K3S Cluster Configuration:
+      - Cluster CIDR: {{ k3s_cluster_config.cluster_cidr }}
+      - Service CIDR: {{ k3s_cluster_config.service_cidr }}
+      - Network Plugin: {{ k3s_cluster_config.network_plugin }}
+      - Master Nodes: {{ cluster_nodes.master_count }}
+      - Worker Nodes: {{ cluster_nodes.worker_count }}
+      - Auto Provision: {{ k3s_auto_provision | default(true) }}

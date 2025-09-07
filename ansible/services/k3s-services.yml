@@ -1,0 +1,199 @@
+# K3S Cluster Service Definitions
+# Services for Kubernetes cluster deployments
+# Multi-node cluster with distributed storage and management tools
+
+k3s_master:
+  enabled: false
+  type: vm
+  vmid: 200
+  template: ubuntu-22.04-cloud
+  count: 1  # Single master for HA, can be increased to 3
+  resources:
+    cpu: 4
+    memory: 8192
+    storage: 100
+  network:
+    ip: dhcp
+    bridge: vmbr0
+    vlan: 200  # Separate VLAN for K3S cluster
+  k3s_role: master
+  cluster_config:
+    cluster_cidr: "10.244.0.0/16"
+    service_cidr: "10.96.0.0/12"
+    cluster_dns: "10.96.0.10"
+  monitoring:
+    enabled: true
+    port: 10250  # Kubelet metrics
+  backup:
+    enabled: true
+    schedule:
+      hour: 1
+      minute: 0
+    retention_days: 14
+    etcd_backup: true
+
+k3s_worker:
+  enabled: false
+  type: vm
+  vmid: 210
+  template: ubuntu-22.04-cloud
+  count: 3  # Deploy 3 worker nodes
+  resources:
+    cpu: 4
+    memory: 8192
+    storage: 80
+  network:
+    ip: dhcp
+    bridge: vmbr0
+    vlan: 200
+  k3s_role: worker
+  storage:
+    longhorn_storage: true
+    storage_size: 200  # GB for Longhorn distributed storage
+  monitoring:
+    enabled: true
+    port: 10250
+  backup:
+    enabled: true
+    schedule:
+      hour: 1
+      minute: 30
+
+longhorn_storage:
+  enabled: false
+  type: service  # Deployed as Kubernetes service
+  namespace: longhorn-system
+  storage_class: longhorn
+  replicas: 3
+  storage_config:
+    default_replica_count: 3
+    backup_target: "s3://backup-bucket/"
+  monitoring:
+    enabled: true
+    port: 9500
+
+rancher_management:
+  enabled: false
+  type: vm
+  vmid: 220
+  template: ubuntu-22.04-cloud
+  resources:
+    cpu: 4
+    memory: 8192
+    storage: 60
+  network:
+    ip: dhcp
+    bridge: vmbr0
+    vlan: 200
+  ports:
+    - "80:80"
+    - "443:443"
+  services:
+    - rancher/rancher:latest
+  monitoring:
+    enabled: true
+    port: 9796
+  backup:
+    enabled: true
+    schedule:
+      hour: 2
+      minute: 0
+
+harbor_registry:
+  enabled: false
+  type: vm
+  vmid: 221
+  template: ubuntu-22.04-cloud
+  resources:
+    cpu: 2
+    memory: 4096
+    storage: 200
+  network:
+    ip: dhcp
+    bridge: vmbr0
+    vlan: 200
+  ports:
+    - "80:80"
+    - "443:443"
+  storage:
+    registry_storage: 500  # GB for container images
+  ssl:
+    enabled: true
+    cert_manager: true
+  monitoring:
+    enabled: true
+    port: 8080
+  backup:
+    enabled: true
+    data_backup_enabled: true
+    data_paths:
+      - "/data/harbor"
+
+argocd:
+  enabled: false
+  type: service  # Deployed as Kubernetes service
+  namespace: argocd
+  resources:
+    cpu: 1
+    memory: 2048
+  ports:
+    - "8080:8080"
+  gitops:
+    enabled: true
+    repo_url: ""  # To be configured
+  monitoring:
+    enabled: true
+    port: 8082
+
+prometheus_stack:
+  enabled: false
+  type: service  # Kubernetes service
+  namespace: monitoring
+  components:
+    - prometheus
+    - grafana
+    - alertmanager
+    - node-exporter
+  storage:
+    prometheus_storage: 100  # GB
+    grafana_storage: 10
+  monitoring:
+    enabled: true
+    grafana_port: 3000
+    prometheus_port: 9090
+
+ingress_nginx:
+  enabled: false
+  type: service  # Kubernetes service
+  namespace: ingress-nginx
+  load_balancer:
+    enabled: true
+    external_ip: ""  # To be configured
+  ssl:
+    cert_manager: true
+  monitoring:
+    enabled: true
+    port: 10254
+
+cert_manager:
+  enabled: false
+  type: service  # Kubernetes service
+  namespace: cert-manager
+  issuers:
+    - letsencrypt-prod
+    - letsencrypt-staging
+  monitoring:
+    enabled: true
+
+velero_backup:
+  enabled: false
+  type: service  # Kubernetes service
+  namespace: velero
+  backup_storage:
+    provider: s3
+    bucket: "k3s-cluster-backups"
+  schedule:
+    daily: "0 2 * * *"
+    weekly: "0 3 * * 0"
+  monitoring:
+    enabled: true

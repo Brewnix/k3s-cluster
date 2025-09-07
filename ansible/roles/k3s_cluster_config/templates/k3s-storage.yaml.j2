@@ -1,0 +1,68 @@
+---
+# K3S Storage Configuration Template
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3s-storage-config
+  namespace: kube-system
+data:
+  storage-config.yaml: |
+    # Default storage configuration
+    defaultStorageClass: longhorn
+    
+    # Local storage configuration
+    localStorage:
+      enabled: true
+      path: /var/lib/rancher/k3s/storage
+      reclaimPolicy: Retain
+      
+    # Longhorn distributed storage
+    {% if enabled_services.longhorn_storage is defined and enabled_services.longhorn_storage.enabled %}
+    longhorn:
+      enabled: true
+      defaultReplicas: {{ cluster_nodes.worker_count | default(3) }}
+      storageOverProvisioningPercentage: 200
+      defaultDataLocality: best-effort
+      replicaReplenishmentWaitInterval: 600
+      backupTarget: "{% if enabled_services.proxmox_backup_server is defined %}nfs://{{ enabled_services.proxmox_backup_server.network.ip | default('backup-server') }}/longhorn-backups{% endif %}"
+    {% endif %}
+    
+    # Persistent Volume configurations
+    persistentVolumes:
+      - name: shared-data
+        capacity: 100Gi
+        accessModes: [ReadWriteMany]
+        storageClass: longhorn
+        
+      - name: database-storage
+        capacity: 50Gi
+        accessModes: [ReadWriteOnce]
+        storageClass: longhorn
+        
+      # Proxmox-specific storage integration
+      {% if proxmox_integration | default(true) %}
+      - name: proxmox-storage
+        capacity: 500Gi
+        accessModes: [ReadWriteOnce]
+        storageClass: proxmox-csi
+        csi:
+          driver: csi.proxmox.sinextra.dev
+          volumeAttributes:
+            storage: {{ proxmox_storage_pool | default('local-lvm') }}
+      {% endif %}
+      
+    # Storage classes
+    storageClasses:
+      - name: fast-ssd
+        provisioner: longhorn
+        parameters:
+          numberOfReplicas: "2"
+          staleReplicaTimeout: "2880"
+          diskSelector: "ssd"
+          
+      - name: bulk-storage  
+        provisioner: longhorn
+        parameters:
+          numberOfReplicas: "1"
+          staleReplicaTimeout: "4320"
+          diskSelector: "hdd"

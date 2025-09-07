@@ -1,0 +1,51 @@
+---
+# K3S Configuration Template
+cluster-cidr: {{ k3s_cluster_config.cluster_cidr }}
+service-cidr: {{ k3s_cluster_config.service_cidr }}
+cluster-dns: {{ k3s_cluster_config.cluster_dns }}
+
+{% if inventory_hostname in groups['k3s_masters'] | default([]) %}
+# Master node configuration
+server: true
+{% if groups['k3s_masters'] | length > 1 %}
+cluster-init: {{ 'true' if inventory_hostname == groups['k3s_masters'][0] else 'false' }}
+{% endif %}
+disable-cloud-controller: true
+disable: 
+  - traefik  # We'll use our own ingress controller
+{% else %}
+# Worker node configuration
+server: false
+{% endif %}
+
+# Network configuration
+flannel-backend: {{ k3s_cluster_config.network_plugin }}
+{% if network is defined and network.vlan_id is defined %}
+node-external-ip: {{ ansible_default_ipv4.address }}
+{% endif %}
+
+# Storage configuration
+default-local-storage-path: /var/lib/rancher/k3s/storage
+
+# Security configuration
+protect-kernel-defaults: true
+secrets-encryption: true
+
+# Logging configuration
+log: /var/log/k3s.log
+alsologtostderr: true
+
+# Performance tuning
+kube-controller-manager-arg:
+  - "node-cidr-mask-size=24"
+  - "service-cluster-ip-range={{ k3s_cluster_config.service_cidr }}"
+
+kube-apiserver-arg:
+  - "service-cluster-ip-range={{ k3s_cluster_config.service_cidr }}"
+
+# Proxmox integration
+{% if proxmox_integration | default(true) %}
+kubelet-arg:
+  - "cloud-provider=external"
+  - "provider-id=proxmox://{{ inventory_hostname }}"
+{% endif %}

@@ -1,0 +1,129 @@
+# Proxmox K3S Service Definitions
+# Services for Kubernetes cluster deployments
+# Demonstrates framework reusability across different server types
+
+k3s_master:
+  enabled: false
+  type: vm
+  vmid: 201
+  template: ubuntu-22.04-cloud
+  resources:
+    cpu: 4
+    memory: 8192
+    storage: 80
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  monitoring:
+    enabled: true
+    port: 10250
+  backup:
+    enabled: true
+    schedule:
+      hour: 1
+      minute: 0
+    retention_days: 14
+
+k3s_worker:
+  enabled: false
+  type: vm
+  vmid: 202
+  template: ubuntu-22.04-cloud
+  count: 3  # Deploy multiple instances
+  resources:
+    cpu: 2
+    memory: 4096
+    storage: 60
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  monitoring:
+    enabled: true
+    port: 10250
+  backup:
+    enabled: true
+    schedule:
+      hour: 1
+      minute: 30
+
+longhorn_storage:
+  enabled: false
+  type: container
+  vmid: 203
+  template: ubuntu-22.04
+  resources:
+    cpu: 2
+    memory: 2048
+    storage: 20
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  volumes:
+    - "/data/longhorn:/var/lib/longhorn"
+  monitoring:
+    enabled: true
+    port: 9500
+
+rancher_management:
+  enabled: false
+  type: vm
+  vmid: 204
+  template: ubuntu-22.04-cloud
+  resources:
+    cpu: 2
+    memory: 4096
+    storage: 40
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  ports:
+    - "80:80"
+    - "443:443"
+  monitoring:
+    enabled: true
+    port: 9796
+  backup:
+    enabled: true
+    schedule:
+      hour: 2
+      minute: 0
+
+argocd:
+  enabled: false
+  type: container
+  vmid: 205
+  template: ubuntu-22.04
+  resources:
+    cpu: 1
+    memory: 2048
+    storage: 20
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  ports:
+    - "8080:8080"
+  monitoring:
+    enabled: true
+    port: 8082
+
+registry:
+  enabled: false
+  type: container
+  vmid: 206
+  template: ubuntu-22.04
+  resources:
+    cpu: 1
+    memory: 1024
+    storage: 100
+  network:
+    ip: dhcp
+    bridge: vmbr0
+  ports:
+    - "5000:5000"
+  volumes:
+    - "/data/registry:/var/lib/registry"
+  backup:
+    enabled: true
+    data_backup_enabled: true
+    data_paths:
+      - "/data/registry"

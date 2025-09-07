@@ -1,0 +1,32 @@
+---
+# K3S Cluster Configuration Handlers
+
+- name: Restart k3s
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+    daemon_reload: true
+  when: ansible_service_mgr == "systemd"
+
+- name: Reload k3s config
+  ansible.builtin.systemd:
+    name: k3s
+    state: reloaded
+  when: ansible_service_mgr == "systemd"
+
+- name: Restart k3s-agent
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: restarted
+    daemon_reload: true
+  when:
+    - ansible_service_mgr == "systemd"
+    - inventory_hostname not in groups['k3s_masters'] | default([])
+
+- name: Update kubectl config
+  ansible.builtin.copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    mode: '0600'
+  when: inventory_hostname in groups['k3s_masters'] | default([])
