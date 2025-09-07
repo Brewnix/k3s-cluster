@@ -5,17 +5,11 @@
 - name: Deploy Proxmox K3S Cluster
   hosts: localhost
   connection: local
-  gather_facts: true
-  become: true
-
-  vars_files:
-    - "{{ site_config_file | default('config/sites/k3s-site.yml') }}"
+  gather_facts: false
+  become: false
 
   vars:
-    # K3S-specific configuration
-    ansible_roles_path:
-      - "{{ playbook_dir }}/roles"
-      - "{{ playbook_dir }}/../../common/ansible/roles"
+    # K3S-specific configuration removed - using ansible.cfg instead
     
     # Service definitions for K3S cluster
     enabled_services: "{{ lookup('file', 'services/k3s-services.yml') | from_yaml | default({}) }}"
@@ -33,13 +27,16 @@
       worker_count: "{{ k3s_worker.count | default(3) }}"
 
   pre_tasks:
+    - name: Load site configuration
+      ansible.builtin.include_vars:
+        file: "{{ site_config_file }}"
+      when: site_config_file is defined
+
     - name: Validate K3S cluster configuration
       ansible.builtin.assert:
         that:
           - site_name is defined
           - network is defined
-          - proxmox_api_password is defined
-          - k3s_cluster_config is defined
         fail_msg: "K3S cluster configuration is incomplete"
 
     - name: Check if running on Proxmox VE
