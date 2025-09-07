@@ -121,5 +121,5 @@
           Service CIDR: {{ k3s_cluster_config.service_cidr }}
           Services Deployed: {{ enabled_services.keys() | list | join(', ') if enabled_services else 'None' }}
           Status: SUCCESS
-        dest: /var/log/proxmox-k3s-deployment.log
+        dest: /var/log/k3s-cluster-deployment.log
         mode: '0644'
